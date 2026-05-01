@@ -36,7 +36,7 @@ class DashboardScreen extends StatelessWidget {
                     const Text('Selamat datang!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Text(
-                      auth.email != null ? 'Masuk sebagai ${auth.email}' : 'Akun admin / donatur',
+                      auth.username != null ? 'Masuk sebagai ${auth.username}' : 'Akun admin / donatur',
                       style: const TextStyle(fontSize: 16, color: Colors.black87),
                     ),
                     const SizedBox(height: 16),
