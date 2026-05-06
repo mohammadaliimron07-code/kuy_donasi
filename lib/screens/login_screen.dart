@@ -12,17 +12,28 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.isAuthenticated) {
+        Navigator.of(context).pushReplacementNamed('/dashboard');
+      }
+    });
+  }
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     final auth = context.read<AuthProvider>();
     final success = await auth.login(
-      username: _usernameController.text.trim(),
+      email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
     );
     setState(() => _isLoading = false);
@@ -32,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username atau password tidak valid.')),
+        const SnackBar(content: Text('Email atau password tidak valid.')),
       );
     }
   }
@@ -84,12 +95,21 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Color(0xFF17A2B8),
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Masukkan email dan password yang sudah terdaftar.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
                           const SizedBox(height: 24),
-                          // Username Field
+                          // Email Field
                           TextFormField(
-                            controller: _usernameController,
+                            controller: _emailController,
                             decoration: InputDecoration(
-                              hintText: 'username',
+                              hintText: 'email',
                               hintStyle: const TextStyle(color: Colors.grey),
                               filled: true,
                               fillColor: const Color(0xFFF5F5F5),
@@ -102,10 +122,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 vertical: 14,
                               ),
                             ),
-                            keyboardType: TextInputType.text,
-                            validator: (value) => value == null || value.isEmpty
-                                ? 'Username wajib diisi.'
-                                : null,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) return 'Email wajib diisi.';
+                              if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                                return 'Email tidak valid.';
+                              }
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 16),
                           // Password Field

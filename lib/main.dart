@@ -4,19 +4,30 @@ import 'package:kuydonasi/providers/auth_provider.dart';
 import 'package:kuydonasi/screens/dashboard_screen.dart';
 import 'package:kuydonasi/screens/login_screen.dart';
 import 'package:kuydonasi/screens/register_screen.dart';
+import 'package:kuydonasi/screens/welcome_screen.dart';
 
 void main() {
   runApp(const KuyDonasiApp());
 }
 
-class KuyDonasiApp extends StatelessWidget {
+class KuyDonasiApp extends StatefulWidget {
   const KuyDonasiApp({super.key});
 
   @override
+  State<KuyDonasiApp> createState() => _KuyDonasiAppState();
+}
+
+class _KuyDonasiAppState extends State<KuyDonasiApp> {
+  @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
+      create: (context) {
+        final auth = AuthProvider();
+        auth.init(); // Initialize shared preferences
+        return auth;
+      },
       child: MaterialApp(
+        debugShowCheckedModeBanner: false,
         title: 'KuyDonasi',
         theme: ThemeData(
           useMaterial3: true,
@@ -43,8 +54,9 @@ class KuyDonasiApp extends StatelessWidget {
         ),
         initialRoute: '/',
         routes: {
-          '/': (_) => const LoginScreen(),
+          '/': (_) => const WelcomeScreen(),
           '/register': (_) => const RegisterScreen(),
+          '/login': (_) => const LoginScreen(),
           '/dashboard': (_) => const AuthGuard(child: DashboardScreen()),
         },
       ),
@@ -65,4 +77,4 @@ class AuthGuard extends StatelessWidget {
     }
     return child;
   }
-}
+}   

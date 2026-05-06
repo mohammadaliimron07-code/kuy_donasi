@@ -11,33 +11,34 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
   bool _isLoading = false;
+  final List<String> _focusOptions = ['Pendidikan', 'Kesehatan', 'Kemanusiaan', 'Lingkungan'];
+  String _selectedFocus = 'Pendidikan';
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_passwordController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password tidak cocok.')),
-      );
-      return;
-    }
     setState(() => _isLoading = true);
     final auth = context.read<AuthProvider>();
     final success = await auth.register(
+      name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
+      focus: _selectedFocus,
     );
     setState(() => _isLoading = false);
     if (success) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akun berhasil dibuat! Anda sudah masuk ke aplikasi.')),
+      );
       Navigator.of(context).pushReplacementNamed('/dashboard');
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pendaftaran gagal. Silakan coba lagi.')),
+        const SnackBar(content: Text('Email sudah digunakan. Silakan pilih email lain.')),
       );
     }
   }
@@ -46,7 +47,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -72,7 +73,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text('Buat Akun', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                        const Text('Buat Identitas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Nama',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                          keyboardType: TextInputType.text,
+                          validator: (value) => value == null || value.isEmpty ? 'Nama wajib diisi.' : null,
+                        ),
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _emailController,
@@ -81,7 +92,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             prefixIcon: Icon(Icons.email_outlined),
                           ),
                           keyboardType: TextInputType.emailAddress,
-                          validator: (value) => value == null || value.isEmpty ? 'Email wajib diisi.' : null,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'Email wajib diisi.';
+                            if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Email tidak valid.';
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -93,31 +108,59 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           obscureText: true,
                           validator: (value) => value == null || value.isEmpty ? 'Password wajib diisi.' : null,
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _confirmController,
-                          decoration: const InputDecoration(
-                            labelText: 'Konfirmasi Password',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          obscureText: true,
-                          validator: (value) => value == null || value.isEmpty ? 'Konfirmasi password wajib diisi.' : null,
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Fokus donasi yang Anda minati:',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: _focusOptions.map((focus) {
+                            final selected = _selectedFocus == focus;
+                            return ChoiceChip(
+                              label: Text(focus),
+                              selected: selected,
+                              onSelected: (_) {
+                                setState(() {
+                                  _selectedFocus = focus;
+                                });
+                              },
+                              selectedColor: const Color(0xFF08A77B),
+                              backgroundColor: const Color(0xFFF3F4F6),
+                              labelStyle: TextStyle(
+                                color: selected ? Colors.white : Colors.black87,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                              side: BorderSide.none,
+                            );
+                          }).toList(),
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: _isLoading ? null : _handleRegister,
-                          child: _isLoading ? const CircularProgressIndicator() : const Text('Daftar'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: const Color(0xFF0D6E63),
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Text(
+                                  'DAFTAR SEKARANG',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
                         ),
                         const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text('Sudah punya akun?'),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pushReplacementNamed('/'),
-                              child: const Text('Masuk'),
-                            ),
-                          ],
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pushReplacementNamed('/login'),
+                          child: const Text('Sudah punya akun? Masuk'),
                         ),
                       ],
                     ),
