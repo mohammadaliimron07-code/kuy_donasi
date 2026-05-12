@@ -6,6 +6,7 @@ enum UserRole { admin, member }
 
 class AuthProvider extends ChangeNotifier {
   static const String _usersKey = 'databaseUser';
+  static const String _savedAccountsKey = 'savedAccounts';
 
   String? _name;
   String? _email;
@@ -15,6 +16,7 @@ class AuthProvider extends ChangeNotifier {
 
   // Persistent storage for user data
   Map<String, Map<String, String>> databaseUser = {};
+  List<String> _savedAccounts = [];
 
   String? get name => _name;
   String? get email => _email;
@@ -22,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
   String? get focus => _focus;
   bool get isAuthenticated => _email != null;
   bool get isAdmin => _role == UserRole.admin;
+  List<String> get savedAccounts => _savedAccounts;
 
   int get totalUsers => databaseUser.length;
 
@@ -69,6 +72,12 @@ class AuthProvider extends ChangeNotifier {
             key,
             Map<String, String>.from(value as Map),
           ));
+    }
+
+    // Load saved accounts
+    final savedAccountsJson = _prefs?.getString(_savedAccountsKey);
+    if (savedAccountsJson != null && savedAccountsJson.isNotEmpty) {
+      _savedAccounts = List<String>.from(jsonDecode(savedAccountsJson) as List);
     }
 
     // Check if user was previously logged in
@@ -151,6 +160,50 @@ class AuthProvider extends ChangeNotifier {
     if (_focus != null) {
       await _prefs?.setString('focus', _focus!);
     }
+    // Save account to saved accounts list
+    await _addToSavedAccounts(_email!);
+  }
+
+  Future<void> _addToSavedAccounts(String email) async {
+    if (!_savedAccounts.contains(email)) {
+      _savedAccounts.add(email);
+      await _prefs?.setString(_savedAccountsKey, jsonEncode(_savedAccounts));
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeSavedAccount(String email) async {
+    _savedAccounts.remove(email);
+    await _prefs?.setString(_savedAccountsKey, jsonEncode(_savedAccounts));
+    notifyListeners();
+  }
+
+  Future<bool> quickLogin({required String email}) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Special case for admin
+    if (email == 'admin@kuy.com') {
+      _email = email;
+      _name = 'Administrator';
+      _role = UserRole.admin;
+      _focus = null;
+      await _saveSession();
+      notifyListeners();
+      return true;
+    }
+
+    // Check stored user credentials
+    if (databaseUser.containsKey(email)) {
+      _email = email;
+      _name = databaseUser[email]!['name'];
+      _role = UserRole.member;
+      _focus = databaseUser[email]!['focus'];
+      await _saveSession();
+      notifyListeners();
+      return true;
+    }
+
+    return false;
   }
 
   Future<void> logout() async {
@@ -162,6 +215,13 @@ class AuthProvider extends ChangeNotifier {
     await _prefs?.remove('name');
     await _prefs?.remove('role');
     await _prefs?.remove('focus');
+    notifyListeners();
+  }
+
+  Future<void> deleteUser(String email, {required bool isAdmin}) async {
+    if (!isAdmin) throw Exception("Hanya Admin yang dapat menghapus user!");
+    databaseUser.remove(email);
+    await _saveUsers();
     notifyListeners();
   }
 }

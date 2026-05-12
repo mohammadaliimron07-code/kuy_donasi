@@ -15,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _showPassword = false;
   final List<String> _focusOptions = ['Pendidikan', 'Kesehatan', 'Kemanusiaan', 'Lingkungan'];
   String _selectedFocus = 'Pendidikan';
 
@@ -101,11 +102,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _passwordController,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Password',
-                            prefixIcon: Icon(Icons.lock_outline),
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _showPassword ? Icons.visibility : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showPassword = !_showPassword;
+                                });
+                              },
+                            ),
                           ),
-                          obscureText: true,
+                          obscureText: !_showPassword,
                           validator: (value) => value == null || value.isEmpty ? 'Password wajib diisi.' : null,
                         ),
                         const SizedBox(height: 24),

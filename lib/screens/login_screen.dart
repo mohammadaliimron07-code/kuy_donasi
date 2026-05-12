@@ -16,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _rememberMe = false;
+  bool _showPassword = false;
 
   @override
   void initState() {
@@ -96,13 +97,117 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'Masukkan email dan password yang sudah terdaftar.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
+                          Consumer<AuthProvider>(
+                            builder: (context, auth, _) {
+                              if (auth.savedAccounts.isNotEmpty) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    const Text(
+                                      'Pilih Akun yang Tersimpan',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    ...auth.savedAccounts.map((email) {
+                                      final userData = auth.databaseUser[email];
+                                      final name = userData?['name'] ?? (email == 'admin@kuy.com' ? 'Administrator' : email);
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () async {
+                                              setState(() => _isLoading = true);
+                                              final success = await auth.quickLogin(email: email);
+                                              setState(() => _isLoading = false);
+                                              if (success && mounted) {
+                                                Navigator.of(context).pushReplacementNamed('/dashboard');
+                                              }
+                                            },
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: const Color(0xFF17A2B8), width: 1.5),
+                                                borderRadius: BorderRadius.circular(12),
+                                                color: const Color(0xFFF0F9FB),
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          name,
+                                                          style: const TextStyle(
+                                                            fontWeight: FontWeight.w600,
+                                                            color: Colors.black87,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(height: 2),
+                                                        Text(
+                                                          email,
+                                                          style: const TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.grey,
+                                                          ),
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  PopupMenuButton<String>(
+                                                    onSelected: (value) {
+                                                      if (value == 'remove') {
+                                                        auth.removeSavedAccount(email);
+                                                      }
+                                                    },
+                                                    itemBuilder: (BuildContext context) => [
+                                                      const PopupMenuItem(
+                                                        value: 'remove',
+                                                        child: Text('Hapus akun'),
+                                                      ),
+                                                    ],
+                                                    icon: const Icon(Icons.more_vert, size: 20),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                    const SizedBox(height: 16),
+                                    const Divider(),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'atau masuk dengan akun lain',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                );
+                              }
+                              return const Text(
+                                'Masukkan email dan password yang sudah terdaftar.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 24),
                           // Email Field
@@ -148,8 +253,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 horizontal: 16,
                                 vertical: 14,
                               ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showPassword ? Icons.visibility : Icons.visibility_off,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _showPassword = !_showPassword;
+                                  });
+                                },
+                              ),
                             ),
-                            obscureText: true,
+                            obscureText: !_showPassword,
                             validator: (value) => value == null || value.isEmpty
                                 ? 'Password wajib diisi.'
                                 : null,
