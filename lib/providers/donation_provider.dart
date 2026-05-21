@@ -8,7 +8,10 @@ class Transaction {
   final String category;
   final double amount;
   final DateTime date;
-  final String status; // 'Terverifikasi', 'Menunggu Verifikasi', 'Gagal'
+  final String status; // 'Terverifikasi', 'Menunggu Verifikasi', 'Ditolak'
+  final String userEmail;
+  final String paymentMethod;
+  final String? receiptUrl;
 
   Transaction({
     required this.id,
@@ -17,6 +20,9 @@ class Transaction {
     required this.amount,
     required this.date,
     required this.status,
+    required this.userEmail,
+    required this.paymentMethod,
+    this.receiptUrl,
   });
 
   Map<String, dynamic> toMap() {
@@ -27,6 +33,9 @@ class Transaction {
       'amount': amount,
       'date': date.toIso8601String(),
       'status': status,
+      'userEmail': userEmail,
+      'paymentMethod': paymentMethod,
+      'receiptUrl': receiptUrl,
     };
   }
 
@@ -38,6 +47,9 @@ class Transaction {
       amount: (map['amount'] as num).toDouble(),
       date: DateTime.parse(map['date']),
       status: map['status'],
+      userEmail: map['userEmail'] as String? ?? '',
+      paymentMethod: map['paymentMethod'] as String? ?? 'Bank Transfer',
+      receiptUrl: map['receiptUrl'] as String?,
     );
   }
 }
@@ -85,13 +97,16 @@ class Feedback {
 class DonationProvider extends ChangeNotifier {
   static const String _transactionsKey = 'donationTransactions';
   static const String _feedbackKey = 'userFeedback';
+  static const String _auditLogKey = 'adminAuditLogs';
 
   List<Transaction> _transactions = [];
   List<Feedback> _feedbackList = [];
+  List<String> _auditLogs = [];
   SharedPreferences? _prefs;
 
   List<Transaction> get transactions => _transactions;
   List<Feedback> get feedbackList => _feedbackList;
+  List<String> get auditLogs => _auditLogs;
 
   double get totalDonated {
     return _transactions
@@ -101,10 +116,15 @@ class DonationProvider extends ChangeNotifier {
 
   int get totalDonations => _transactions.length;
 
+  List<Transaction> get pendingTransactions {
+    return _transactions.where((t) => t.status == 'Menunggu Verifikasi').toList();
+  }
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     await _loadTransactions();
     await _loadFeedback();
+    await _loadAuditLogs();
   }
 
   Future<void> _loadTransactions() async {
@@ -129,6 +149,15 @@ class DonationProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadAuditLogs() async {
+    final data = _prefs?.getString(_auditLogKey);
+    if (data != null && data.isNotEmpty) {
+      final List<dynamic> decoded = jsonDecode(data);
+      _auditLogs = decoded.cast<String>().toList();
+      notifyListeners();
+    }
+  }
+
   Future<void> _saveTransactions() async {
     final encoded = jsonEncode(_transactions.map((t) => t.toMap()).toList());
     await _prefs?.setString(_transactionsKey, encoded);
@@ -139,10 +168,21 @@ class DonationProvider extends ChangeNotifier {
     await _prefs?.setString(_feedbackKey, encoded);
   }
 
+  Future<void> _saveAuditLogs() async {
+    await _prefs?.setString(_auditLogKey, jsonEncode(_auditLogs));
+  }
+
+  Future<void> addAuditLogEntry(String message) async {
+    await _addAuditLog(message);
+  }
+
   Future<bool> addTransaction({
     required String campaignTitle,
     required String category,
     required double amount,
+    required String userEmail,
+    required String paymentMethod,
+    String? receiptUrl,
   }) async {
     await Future.delayed(const Duration(milliseconds: 500));
 
@@ -153,10 +193,16 @@ class DonationProvider extends ChangeNotifier {
       amount: amount,
       date: DateTime.now(),
       status: 'Menunggu Verifikasi',
+      userEmail: userEmail,
+      paymentMethod: paymentMethod,
+      receiptUrl: receiptUrl,
     );
 
     _transactions.add(transaction);
     await _saveTransactions();
+    await _addAuditLog(
+      '[${DateTime.now().toIso8601String()}] $userEmail mengirim bukti donasi Rp ${amount.toStringAsFixed(0)} ke program "${campaignTitle}". Status: Menunggu Verifikasi.',
+    );
     notifyListeners();
     return true;
   }
@@ -193,6 +239,21 @@ class DonationProvider extends ChangeNotifier {
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
+  double totalDonatedBy(String email) {
+    return _transactions
+        .where((t) => t.userEmail == email && t.status == 'Terverifikasi')
+        .fold(0.0, (sum, t) => sum + t.amount);
+  }
+
+  Future<void> _addAuditLog(String message) async {
+    _auditLogs.insert(0, message);
+    if (_auditLogs.length > 100) {
+      _auditLogs = _auditLogs.sublist(0, 100);
+    }
+    await _saveAuditLogs();
+    notifyListeners();
+  }
+
   Future<bool> updateFeedbackStatus(String id, String newStatus, {required bool isAdmin}) async {
     if (!isAdmin) throw Exception("Hanya Admin yang dapat mengubah status feedback!");
     final index = _feedbackList.indexWhere((f) => f.id == id);
@@ -213,7 +274,7 @@ class DonationProvider extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> updateTransactionStatus(String id, String newStatus, {required bool isAdmin}) async {
+  Future<bool> updateTransactionStatus(String id, String newStatus, {required bool isAdmin, String? adminEmail}) async {
     if (!isAdmin) throw Exception("Hanya Admin yang dapat memvalidasi donasi!");
     final index = _transactions.indexWhere((t) => t.id == id);
     if (index != -1) {
@@ -225,9 +286,15 @@ class DonationProvider extends ChangeNotifier {
         amount: old.amount,
         date: old.date,
         status: newStatus,
+        userEmail: old.userEmail,
+        paymentMethod: old.paymentMethod,
+        receiptUrl: old.receiptUrl,
       );
       await _saveTransactions();
-      notifyListeners();
+      final formattedAmount = old.amount.toStringAsFixed(0);
+      await _addAuditLog(
+        '[${DateTime.now().toIso8601String()}] ${adminEmail ?? 'Admin'} mengubah status donasi Rp $formattedAmount dari ${old.userEmail} pada program "${old.campaignTitle}" dari ${old.status} menjadi $newStatus.',
+      );
       return true;
     }
     return false;

@@ -137,6 +137,39 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
 
+                      // Fokus Donasi (pilihan)
+                      Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Fokus Donasi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                children: ['Pendidikan', 'Kesehatan', 'Kemanusiaan', 'Lingkungan'].map((f) {
+                                  final selected = (auth.focus ?? '') == f;
+                                  return ChoiceChip(
+                                    label: Text(f),
+                                    selected: selected,
+                                    onSelected: (_) async {
+                                      await context.read<AuthProvider>().updateFocus(f);
+                                    },
+                                    selectedColor: const Color(0xFF00695C),
+                                    backgroundColor: const Color(0xFFF3F4F6),
+                                    labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
+                                    elevation: selected ? 2 : 0,
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
                   // Statistics
                   const Text(
                     'Statistik Donasi',

@@ -3,671 +3,565 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:kuydonasi/providers/auth_provider.dart';
 import 'package:kuydonasi/providers/donation_provider.dart';
-import 'package:kuydonasi/providers/campaign_provider.dart';
 
-class AdminDashboardScreen extends StatefulWidget {
+class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
-
-  @override
-  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
-}
-
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  int _currentIndex = 0;
-
-  Future<void> _handleLogout() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Konfirmasi Logout'),
-        content: const Text('Apakah Anda yakin ingin logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Logout', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    if (shouldLogout == true && mounted) {
-      await context.read<AuthProvider>().logout();
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final donation = context.watch<DonationProvider>();
 
-    // A. Routing Guard (Penjaga Pintu)
-    if (!auth.isAdmin) {
-      return const Scaffold(
-        body: Center(
-          child: Text(
-            "Access Denied: Anda tidak memiliki akses ke halaman ini.",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Admin Dashboard KuyDonasi'),
+          backgroundColor: const Color(0xFF17A2B8),
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              tooltip: 'Logout',
+              onPressed: () => _showLogoutDialog(context, auth),
+            ),
+          ],
+          bottom: const TabBar(
+            indicatorColor: Colors.white,
+            tabs: [
+              Tab(text: 'Verifikasi', icon: Icon(Icons.fact_check)),
+              Tab(text: 'Pengguna', icon: Icon(Icons.people)),
+              Tab(text: 'Audit', icon: Icon(Icons.analytics)),
+            ],
           ),
+        ),
+        body: TabBarView(
+          children: [
+            _VerificationTab(auth: auth, donation: donation),
+            _UsersTab(auth: auth, donation: donation),
+            _AuditTab(donation: donation),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context, AuthProvider auth) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Logout'),
+          content: const Text('Apakah Anda yakin ingin keluar dari Admin Panel?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await auth.logout();
+                if (context.mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                }
+              },
+              child: const Text(
+                'Keluar',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _VerificationTab extends StatelessWidget {
+  final AuthProvider auth;
+  final DonationProvider donation;
+
+  const _VerificationTab({required this.auth, required this.donation});
+
+  String _formatDate(DateTime date) {
+    return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(date.toLocal());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = donation.pendingTransactions;
+
+    if (pending.isEmpty) {
+      return const Center(
+        child: Text(
+          'Tidak ada donasi yang menunggu verifikasi saat ini.',
+          textAlign: TextAlign.center,
         ),
       );
     }
 
-    final List<Widget> screens = [
-      _buildDashboardView(context),
-      _buildDonationManagementView(context),
-    ];
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9), // Slate 100 for background
-      appBar: AppBar(
-        title: const Text('Admin Panel KuyDonasi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E293B), // Slate 800 Dark Theme
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _handleLogout,
-          ),
-        ],
-      ),
-      body: screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        backgroundColor: const Color(0xFF1E293B), // Slate 800 Dark Theme
-        selectedItemColor: Colors.white,
-        unselectedItemColor: Colors.grey.shade500,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard Pengelola',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet),
-            label: 'Kelola Donasi',
-          ),
-        ],
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: pending.length,
+      itemBuilder: (context, index) {
+        final tx = pending[index];
+        return _VerificationCard(tx: tx, auth: auth, donation: donation, formatDate: _formatDate);
+      },
     );
   }
+}
 
-  Widget _buildDashboardView(BuildContext context) {
-    final auth = context.read<AuthProvider>();
-    final donation = context.watch<DonationProvider>();
-    final campaignProvider = context.watch<CampaignProvider>();
-    final numberFormat = NumberFormat('#,##0', 'id_ID');
+class _VerificationCard extends StatefulWidget {
+  final Transaction tx;
+  final AuthProvider auth;
+  final DonationProvider donation;
+  final String Function(DateTime) formatDate;
 
-    final counts = auth.focusCounts;
-    final total = auth.totalUsers;
-    final topFocus = auth.topFocus;
-    final maxCount = counts.values.isEmpty ? 1 : counts.values.reduce((a, b) => a > b ? a : b);
+  const _VerificationCard({
+    required this.tx,
+    required this.auth,
+    required this.donation,
+    required this.formatDate,
+  });
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Selamat datang, ${auth.name ?? 'Admin'}',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Panel Admin Eksklusif untuk memantau minat donasi dan daftar pengguna.',
-            style: TextStyle(fontSize: 16, color: Colors.black87),
-          ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              _AdminStatCard(
-                title: 'Total User',
-                value: total.toString(),
-                color: Colors.blueAccent,
-              ),
-              _AdminStatCard(
-                title: 'Minat Tertinggi',
-                value: topFocus,
-                color: Colors.green,
-              ),
-              _AdminStatCard(
-                title: 'Status Sistem',
-                value: total > 0 ? 'Aktif' : 'Menunggu data',
-                color: total > 0 ? Colors.teal : Colors.orange,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Analisis Minat
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Analisis Minat',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 16),
-                  ...counts.entries.map((entry) {
-                    final percent = maxCount == 0 ? 0.0 : entry.value / maxCount;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              Text('${entry.value} pendaftar', style: const TextStyle(color: Colors.black54)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          LinearProgressIndicator(
-                            value: percent,
-                            minHeight: 12,
-                            color: const Color(0xFF1E293B),
-                            backgroundColor: Colors.grey.shade200,
-                          ),
+  @override
+  State<_VerificationCard> createState() => _VerificationCardState();
+}
+
+class _VerificationCardState extends State<_VerificationCard> {
+  bool _isProcessing = false;
+  bool _isVerified = false;
+
+  Future<void> _verifyDonation() async {
+    setState(() {
+      _isProcessing = true;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    try {
+      await widget.donation.updateTransactionStatus(
+        widget.tx.id,
+        'Terverifikasi',
+        isAdmin: widget.auth.isAdmin,
+        adminEmail: widget.auth.email,
+      );
+      if (mounted) {
+        setState(() {
+          _isVerified = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Donasi disetujui.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tx = widget.tx;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Target Program: ${tx.campaignTitle}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text('Donatur: ${tx.userEmail.isEmpty ? 'Tidak diketahui' : tx.userEmail}'),
+            const SizedBox(height: 4),
+            Text('Kategori: ${tx.category}'),
+            const SizedBox(height: 4),
+            Text('Jumlah: Rp ${tx.amount.toStringAsFixed(0)}'),
+            const SizedBox(height: 4),
+            Text('Tanggal: ${widget.formatDate(tx.date)}'),
+            const SizedBox(height: 4),
+            Text('Status: ${tx.status}'),
+            const SizedBox(height: 4),
+            Text('Metode: ${tx.paymentMethod}'),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  onPressed: _isProcessing
+                      ? null
+                      : () async {
+                          try {
+                            await widget.donation.updateTransactionStatus(
+                              tx.id,
+                              'Ditolak',
+                              isAdmin: widget.auth.isAdmin,
+                              adminEmail: widget.auth.email,
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Donasi ditolak.')),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          }
+                        },
+                  child: const Text('Tolak'),
+                ),
+                const SizedBox(width: 12),
+                _isVerified
+                    ? Row(
+                        children: const [
+                          Icon(Icons.check_circle, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Berhasil', style: TextStyle(fontWeight: FontWeight.bold)),
                         ],
+                      )
+                    : ElevatedButton(
+                        onPressed: _isProcessing ? null : _verifyDonation,
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D6E63)),
+                        child: _isProcessing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Setujui'),
                       ),
-                    );
-                  }).toList(),
-                ],
-              ),
+              ],
             ),
-          ),
-          const SizedBox(height: 24),
-          // Daftar Pengguna
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Daftar Pengguna Terdaftar',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: auth.registeredUsers.length,
-                      itemBuilder: (context, index) {
-                        final user = auth.registeredUsers[index];
-                        final userName = user['name'] ?? 'Unknown';
-                        final userEmail = user['email'] ?? '';
-                        
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: const Color(0xFF1E293B),
-                            foregroundColor: Colors.white,
-                            child: Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?'),
-                          ),
-                          title: Text(userName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(userEmail),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Member', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text("Konfirmasi Hapus"),
-                                      content: Text("Apakah Anda yakin ingin menghapus user $userName?"),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(dialogContext), 
-                                          child: const Text("Batal")
-                                        ),
-                                        TextButton(
-                                          onPressed: () async {
-                                            Navigator.pop(dialogContext);
-                                            try {
-                                              await context.read<AuthProvider>().deleteUser(
-                                                userEmail, 
-                                                isAdmin: auth.isAdmin,
-                                              );
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text('User $userName berhasil dihapus')),
-                                                );
-                                              }
-                                            } catch (e) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text(e.toString())),
-                                                );
-                                              }
-                                            }
-                                          }, 
-                                          child: const Text("Hapus", style: TextStyle(color: Colors.red)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Pusat Masukan
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Pusat Masukan (Feedback Center)',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 16),
-                  donation.feedbackList.isEmpty
-                      ? const Text('Belum ada feedback dari pengguna.', style: TextStyle(color: Colors.grey))
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: donation.feedbackList.length,
-                          separatorBuilder: (_, __) => const Divider(),
-                          itemBuilder: (context, index) {
-                            final feedback = donation.feedbackList[index];
-                            return ListTile(
-                              leading: Icon(
-                                feedback.type == 'bug'
-                                    ? Icons.bug_report
-                                    : (feedback.type == 'feature' ? Icons.lightbulb : Icons.tune),
-                                color: const Color(0xFF1E293B),
-                              ),
-                              title: Text(feedback.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: Text(feedback.description),
-                              trailing: DropdownButton<String>(
-                                value: ['Baru', 'Ditinjau', 'Disetujui', 'Ditolak'].contains(feedback.status) 
-                                    ? feedback.status 
-                                    : 'Baru',
-                                items: ['Baru', 'Ditinjau', 'Disetujui', 'Ditolak']
-                                    .map((status) => DropdownMenuItem(
-                                          value: status,
-                                          child: Text(status, style: const TextStyle(fontSize: 12)),
-                                        ))
-                                    .toList(),
-                                onChanged: (newStatus) {
-                                  if (newStatus != null) {
-                                    try {
-                                      context.read<DonationProvider>().updateFeedbackStatus(
-                                        feedback.id, 
-                                        newStatus,
-                                        isAdmin: auth.isAdmin,
-                                      );
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(e.toString())),
-                                      );
-                                    }
-                                  }
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Manajemen Kampanye
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Manajemen Kampanye',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Fitur tambah kampanye akan datang')),
-                          );
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Tambah'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E293B),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  campaignProvider.campaigns.isEmpty
-                      ? const Text('Belum ada kampanye.', style: TextStyle(color: Colors.grey))
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: campaignProvider.campaigns.length,
-                          separatorBuilder: (_, __) => const Divider(),
-                          itemBuilder: (context, index) {
-                            final campaign = campaignProvider.campaigns[index];
-                            return ListTile(
-                              title: Text(campaign.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: Text(
-                                'Target: Rp ${numberFormat.format(campaign.targetAmount)} - Status: ${campaign.isActive ? 'Aktif' : 'Tutup'}',
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                                    onPressed: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Fitur edit kampanye akan datang')),
-                                      );
-                                    },
-                                  ),
-                                  Switch(
-                                    value: campaign.isActive,
-                                    activeColor: const Color(0xFF1E293B),
-                                    onChanged: (val) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Fitur tutup kampanye akan datang')),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Super Control Panel
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            color: Colors.red.shade50,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Super Control (Otoritas Penuh)',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Master Switch: Donasi dihentikan sementara untuk Audit.')),
-                          );
-                        },
-                        icon: const Icon(Icons.power_settings_new),
-                        label: const Text('Master Switch (Donasi)'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Mengekspor data ke PDF/Excel...')),
-                          );
-                        },
-                        icon: const Icon(Icons.download),
-                        label: const Text('Data Export (Laporan ISAK 35)'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Menampilkan Audit Log (Activity history)...')),
-                          );
-                        },
-                        icon: const Icon(Icons.history),
-                        label: const Text('Audit Log'),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E293B), foregroundColor: Colors.white),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDonationManagementView(BuildContext context) {
-    final donationProvider = context.watch<DonationProvider>();
-    final numberFormat = NumberFormat('#,##0', 'id_ID');
-    final dateFormat = DateFormat('dd MMM yyyy, HH:mm', 'id_ID');
-
-    final transactions = donationProvider.transactions.reversed.toList();
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Kelola Verifikasi Donasi',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Pantau donasi yang masuk dan verifikasi untuk integrasi laporan keuangan ISAK 35.',
-            style: TextStyle(fontSize: 14, color: Colors.black54),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: transactions.isEmpty
-                ? const Center(
-                    child: Text('Belum ada transaksi donasi yang masuk.', style: TextStyle(color: Colors.grey)),
-                  )
-                : ListView.builder(
-                    itemCount: transactions.length,
-                    itemBuilder: (context, index) {
-                      final tx = transactions[index];
-                      final isPending = tx.status == 'Menunggu Verifikasi';
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      tx.campaignTitle,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Rp ${numberFormat.format(tx.amount)}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    dateFormat.format(tx.date),
-                                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: isPending ? Colors.orange.shade100 : Colors.green.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      tx.status,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: isPending ? Colors.orange.shade800 : Colors.green.shade800,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (isPending) ...[
-                                const Divider(height: 24),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    OutlinedButton.icon(
-                                      onPressed: () {
-                                        try {
-                                          context.read<DonationProvider>().updateTransactionStatus(
-                                            tx.id,
-                                            'Gagal',
-                                            isAdmin: context.read<AuthProvider>().isAdmin,
-                                          );
-                                        } catch (e) {
-                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                                        }
-                                      },
-                                      icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                                      label: const Text('Tolak', style: TextStyle(color: Colors.red)),
-                                      style: OutlinedButton.styleFrom(
-                                        side: const BorderSide(color: Colors.red),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    ElevatedButton.icon(
-                                      onPressed: () {
-                                        try {
-                                          context.read<DonationProvider>().updateTransactionStatus(
-                                            tx.id,
-                                            'Terverifikasi',
-                                            isAdmin: context.read<AuthProvider>().isAdmin,
-                                          );
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Donasi berhasil diverifikasi!')),
-                                          );
-                                        } catch (e) {
-                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                                        }
-                                      },
-                                      icon: const Icon(Icons.check, size: 18),
-                                      label: const Text('Verifikasi'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF1E293B),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _AdminStatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final Color color;
+class _UsersTab extends StatelessWidget {
+  final AuthProvider auth;
+  final DonationProvider donation;
 
-  const _AdminStatCard({required this.title, required this.value, required this.color});
+  const _UsersTab({required this.auth, required this.donation});
+
+  String _displayRoleLabel(String roleLabel) {
+    if (roleLabel == 'Member') {
+      return 'Donatur';
+    }
+    return roleLabel;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 280,
-      child: Card(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 2,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: color, width: 4)),
-            borderRadius: BorderRadius.circular(16),
+    final users = auth.registeredUsers;
+    if (users.isEmpty) {
+      return const Center(
+        child: Text('Belum ada user terdaftar.'),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: users.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: auth.isSuperAdmin
+                ? Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final formKey = GlobalKey<FormState>();
+                        String name = '';
+                        String email = '';
+                        String password = '';
+                        UserRole role = UserRole.financeAdmin;
+
+                        await showDialog<void>(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              title: const Text('Tambah Admin Baru'),
+                              content: Form(
+                                key: formKey,
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      TextFormField(
+                                        decoration: const InputDecoration(labelText: 'Nama'),
+                                        onSaved: (value) => name = value?.trim() ?? '',
+                                        validator: (value) => value == null || value.trim().isEmpty ? 'Nama wajib diisi' : null,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextFormField(
+                                        decoration: const InputDecoration(labelText: 'Email'),
+                                        keyboardType: TextInputType.emailAddress,
+                                        onSaved: (value) => email = value?.trim() ?? '',
+                                        validator: (value) => value == null || value.trim().isEmpty ? 'Email wajib diisi' : null,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextFormField(
+                                        decoration: const InputDecoration(labelText: 'Password'),
+                                        obscureText: true,
+                                        onSaved: (value) => password = value?.trim() ?? '',
+                                        validator: (value) => value == null || value.trim().isEmpty ? 'Password wajib diisi' : null,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      DropdownButtonFormField<UserRole>(
+                                        value: role,
+                                        items: const [
+                                          DropdownMenuItem(value: UserRole.financeAdmin, child: Text('Admin Keuangan')),
+                                          DropdownMenuItem(value: UserRole.contentAdmin, child: Text('Admin Konten')),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value != null) {
+                                            role = value;
+                                          }
+                                        },
+                                        decoration: const InputDecoration(labelText: 'Peran'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext),
+                                  child: const Text('Batal'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    if (formKey.currentState?.validate() ?? false) {
+                                      formKey.currentState?.save();
+                                      try {
+                                        final success = await auth.registerAdmin(
+                                          name: name,
+                                          email: email,
+                                          password: password,
+                                          role: role,
+                                          isAdmin: auth.isSuperAdmin,
+                                        );
+                                        if (!success) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Email sudah terdaftar.')),
+                                            );
+                                          }
+                                        } else {
+                                          await donation.addAuditLogEntry(
+                                            '[${DateTime.now().toIso8601String()}] ${auth.name ?? 'Admin'} mendaftarkan Admin baru: $name.',
+                                          );
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Admin baru berhasil ditambahkan.')),
+                                            );
+                                          }
+                                          Navigator.pop(dialogContext);
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(e.toString())),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  },
+                                  child: const Text('Simpan'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Tambah Admin Baru'),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          );
+        }
+
+        final user = users[index - 1];
+        final email = user['email'] ?? '';
+        final donations = donation.totalDonatedBy(email);
+        final isBanned = user['banned'] == 'true';
+        final roleLabel = _displayRoleLabel(user['roleLabel'] ?? 'Member');
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user['name'] ?? '',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(email),
+                const SizedBox(height: 4),
+                Text('Peran: $roleLabel'),
+                const SizedBox(height: 4),
+                Text('Total donasi: Rp ${donations.toStringAsFixed(0)}'),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Status akun: ',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    Text(
+                      isBanned ? 'Ditangguhkan' : 'Aktif',
+                      style: TextStyle(
+                        color: isBanned ? Colors.red : Colors.green,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: auth.isSuperAdmin
+                          ? () async {
+                              final chosenRole = await showDialog<UserRole>(
+                                context: context,
+                                builder: (dialogContext) {
+                                  return SimpleDialog(
+                                    title: const Text('Ubah Peran'),
+                                    children: [
+                                      SimpleDialogOption(
+                                        onPressed: () => Navigator.pop(dialogContext, UserRole.financeAdmin),
+                                        child: const Text('Admin Keuangan'),
+                                      ),
+                                      SimpleDialogOption(
+                                        onPressed: () => Navigator.pop(dialogContext, UserRole.contentAdmin),
+                                        child: const Text('Admin Konten'),
+                                      ),
+                                      SimpleDialogOption(
+                                        onPressed: () => Navigator.pop(dialogContext, UserRole.member),
+                                        child: const Text('Donatur'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                              if (chosenRole != null) {
+                                try {
+                                  await auth.updateUserRole(email, chosenRole, isAdmin: auth.isSuperAdmin);
+                                  await donation.addAuditLogEntry(
+                                    '[${DateTime.now().toIso8601String()}] ${auth.name ?? 'Admin'} mengubah peran $email menjadi ${chosenRole.label}.',
+                                  );
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Peran user berhasil diubah.')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.toString())),
+                                    );
+                                  }
+                                }
+                              }
+                            }
+                          : null,
+                      child: const Text('Ubah Peran'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      icon: Icon(isBanned ? Icons.lock_open : Icons.block),
+                      onPressed: () async {
+                        try {
+                          await auth.toggleBanUser(email, isAdmin: auth.isAdmin);
+                          await donation.addAuditLogEntry(
+                            '[${DateTime.now().toIso8601String()}] ${auth.name ?? 'Admin'} mengubah status akun $email menjadi ${isBanned ? 'Aktif' : 'Ditangguhkan'}.',
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(isBanned ? 'Pengguna diaktifkan kembali.' : 'Pengguna diblokir.')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
+                        }
+                      },
+                      label: Text(isBanned ? 'Buka Blokir' : 'Suspend / Blokir'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
+    );
+  }
+}
+
+class _AuditTab extends StatelessWidget {
+  final DonationProvider donation;
+
+  const _AuditTab({required this.donation});
+
+  @override
+  Widget build(BuildContext context) {
+    final logs = donation.auditLogs;
+    if (logs.isEmpty) {
+      return const Center(
+        child: Text('Belum ada catatan audit.'),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: logs.length,
+      separatorBuilder: (_, __) => const Divider(),
+      itemBuilder: (context, index) {
+        final raw = logs[index];
+        final match = RegExp(r'^\[(.*?)\]\s*(.*)').firstMatch(raw);
+        final timestampText = match?.group(1) ?? '';
+        final message = match?.group(2) ?? raw;
+        final timestamp = DateTime.tryParse(timestampText)?.toLocal();
+        final subtitle = timestamp != null
+            ? DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(timestamp)
+            : '';
+
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(message),
+          subtitle: subtitle.isNotEmpty ? Text(subtitle) : null,
+          leading: const Icon(Icons.history, color: Color(0xFF17A2B8)),
+        );
+      },
     );
   }
 }

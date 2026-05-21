@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:kuydonasi/providers/auth_provider.dart';
 import 'package:kuydonasi/providers/campaign_provider.dart';
 import 'package:kuydonasi/providers/donation_provider.dart';
+import 'package:kuydonasi/screens/transfer_donation_screen.dart';
 
 class DonorDashboardScreen extends StatefulWidget {
   const DonorDashboardScreen({super.key});
@@ -46,6 +47,13 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
         title: const Text('KuyDonasi'),
         elevation: 0,
         actions: [
+          IconButton(
+            tooltip: 'Kategori',
+            icon: const Icon(Icons.filter_list),
+            onPressed: () {
+              Navigator.of(context).pushNamed('/donation-home');
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout_outlined),
             onPressed: () async {
@@ -454,7 +462,11 @@ class _CampaignListItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () {
-          // TODO: Navigate to campaign detail
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TransferDonationScreen(campaign: campaign),
+            ),
+          );
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(

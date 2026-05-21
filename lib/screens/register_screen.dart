@@ -16,8 +16,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _showPassword = false;
-  final List<String> _focusOptions = ['Pendidikan', 'Kesehatan', 'Kemanusiaan', 'Lingkungan'];
-  String _selectedFocus = 'Pendidikan';
+  
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
@@ -27,7 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
-      focus: _selectedFocus,
+      focus: '',
     );
     setState(() => _isLoading = false);
     if (success) {
@@ -118,35 +117,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           obscureText: !_showPassword,
                           validator: (value) => value == null || value.isEmpty ? 'Password wajib diisi.' : null,
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Fokus donasi yang Anda minati:',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: _focusOptions.map((focus) {
-                            final selected = _selectedFocus == focus;
-                            return ChoiceChip(
-                              label: Text(focus),
-                              selected: selected,
-                              onSelected: (_) {
-                                setState(() {
-                                  _selectedFocus = focus;
-                                });
-                              },
-                              selectedColor: const Color(0xFF08A77B),
-                              backgroundColor: const Color(0xFFF3F4F6),
-                              labelStyle: TextStyle(
-                                color: selected ? Colors.white : Colors.black87,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                              side: BorderSide.none,
-                            );
-                          }).toList(),
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(

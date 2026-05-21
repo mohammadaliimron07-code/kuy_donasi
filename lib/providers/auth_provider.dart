@@ -2,7 +2,42 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum UserRole { admin, member }
+enum UserRole {
+  superAdmin,
+  financeAdmin,
+  contentAdmin,
+  member,
+}
+
+extension UserRoleExtension on UserRole {
+  String get label {
+    switch (this) {
+      case UserRole.superAdmin:
+        return 'Super Admin';
+      case UserRole.financeAdmin:
+        return 'Admin Keuangan';
+      case UserRole.contentAdmin:
+        return 'Admin Konten';
+      case UserRole.member:
+        return 'Member';
+    }
+  }
+
+  String get storageKey {
+    switch (this) {
+      case UserRole.superAdmin:
+        return 'superAdmin';
+      case UserRole.financeAdmin:
+        return 'financeAdmin';
+      case UserRole.contentAdmin:
+        return 'contentAdmin';
+      case UserRole.member:
+        return 'member';
+    }
+  }
+
+  bool get isAdmin => this != UserRole.member;
+}
 
 class AuthProvider extends ChangeNotifier {
   static const String _usersKey = 'databaseUser';
@@ -21,9 +56,11 @@ class AuthProvider extends ChangeNotifier {
   String? get name => _name;
   String? get email => _email;
   UserRole? get role => _role;
+  String get roleLabel => _role?.label ?? '-';
   String? get focus => _focus;
   bool get isAuthenticated => _email != null;
-  bool get isAdmin => _role == UserRole.admin;
+  bool get isAdmin => _role?.isAdmin ?? false;
+  bool get isSuperAdmin => _role == UserRole.superAdmin;
   List<String> get savedAccounts => _savedAccounts;
 
   int get totalUsers => databaseUser.length;
@@ -57,6 +94,9 @@ class AuthProvider extends ChangeNotifier {
         'name': entry.value['name'] ?? '',
         'email': entry.key,
         'focus': entry.value['focus'] ?? '-',
+        'role': entry.value['role'] ?? UserRole.member.storageKey,
+        'roleLabel': _parseRole(entry.value['role'] ?? UserRole.member.storageKey).label,
+        'banned': entry.value['banned'] ?? 'false',
       };
     }).toList();
   }
@@ -88,7 +128,7 @@ class AuthProvider extends ChangeNotifier {
     if (savedEmail != null && savedName != null && savedRole != null) {
       _email = savedEmail;
       _name = savedName;
-      _role = savedRole == 'admin' ? UserRole.admin : UserRole.member;
+      _role = _parseRole(savedRole);
       _focus = savedFocus;
       notifyListeners();
     }
@@ -99,14 +139,28 @@ class AuthProvider extends ChangeNotifier {
     await _prefs?.setString(_usersKey, encoded);
   }
 
+  UserRole _parseRole(String role) {
+    switch (role) {
+      case 'superAdmin':
+      case 'admin':
+        return UserRole.superAdmin;
+      case 'financeAdmin':
+        return UserRole.financeAdmin;
+      case 'contentAdmin':
+        return UserRole.contentAdmin;
+      default:
+        return UserRole.member;
+    }
+  }
+
   Future<bool> login({required String email, required String password}) async {
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Special case for admin
+    // Special case for super admin
     if (email == 'admin@kuy.com' && password == 'admin') {
       _email = email;
       _name = 'Administrator';
-      _role = UserRole.admin;
+      _role = UserRole.superAdmin;
       _focus = null;
       await _saveSession();
       notifyListeners();
@@ -115,9 +169,12 @@ class AuthProvider extends ChangeNotifier {
 
     // Check stored user credentials
     if (databaseUser.containsKey(email) && databaseUser[email]!['password'] == password) {
+      if (databaseUser[email]!['banned'] == 'true') {
+        return false;
+      }
       _email = email;
       _name = databaseUser[email]!['name'];
-      _role = UserRole.member;
+      _role = _parseRole(databaseUser[email]!['role'] ?? UserRole.member.storageKey);
       _focus = databaseUser[email]!['focus'];
       await _saveSession();
       notifyListeners();
@@ -140,6 +197,8 @@ class AuthProvider extends ChangeNotifier {
       'name': name,
       'password': password,
       'focus': focus,
+      'role': UserRole.member.storageKey,
+      'banned': 'false',
     };
     await _saveUsers();
 
@@ -153,10 +212,61 @@ class AuthProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Update the user's focus preference and persist it.
+  Future<void> updateFocus(String focus) async {
+    _focus = focus.isEmpty ? null : focus;
+    // Update stored user record if logged in
+    if (_email != null && databaseUser.containsKey(_email)) {
+      databaseUser[_email!] = {
+        'name': _name ?? databaseUser[_email!]!['name'] ?? '',
+        'password': databaseUser[_email!]!['password'] ?? '',
+        'focus': focus,
+        'role': databaseUser[_email!]!['role'] ?? UserRole.member.storageKey,
+        'banned': databaseUser[_email!]!['banned'] ?? 'false',
+      };
+      await _saveUsers();
+    }
+    await _saveSession();
+    notifyListeners();
+  }
+
+  Future<bool> registerAdmin({
+    required String name,
+    required String email,
+    required String password,
+    required UserRole role,
+    required bool isAdmin,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!isAdmin) {
+      throw Exception('Hanya Admin yang dapat menambahkan admin baru.');
+    }
+
+    if (role == UserRole.member) {
+      throw Exception('Role admin harus dipilih.');
+    }
+
+    if (databaseUser.containsKey(email)) {
+      return false;
+    }
+
+    databaseUser[email] = {
+      'name': name,
+      'password': password,
+      'focus': '',
+      'role': role.storageKey,
+      'banned': 'false',
+    };
+    await _saveUsers();
+    notifyListeners();
+    return true;
+  }
+
   Future<void> _saveSession() async {
     await _prefs?.setString('email', _email!);
     await _prefs?.setString('name', _name!);
-    await _prefs?.setString('role', _role == UserRole.admin ? 'admin' : 'member');
+    await _prefs?.setString('role', _role?.storageKey ?? UserRole.member.storageKey);
     if (_focus != null) {
       await _prefs?.setString('focus', _focus!);
     }
@@ -181,11 +291,11 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> quickLogin({required String email}) async {
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Special case for admin
+    // Special case for super admin
     if (email == 'admin@kuy.com') {
       _email = email;
       _name = 'Administrator';
-      _role = UserRole.admin;
+      _role = UserRole.superAdmin;
       _focus = null;
       await _saveSession();
       notifyListeners();
@@ -194,9 +304,12 @@ class AuthProvider extends ChangeNotifier {
 
     // Check stored user credentials
     if (databaseUser.containsKey(email)) {
+      if (databaseUser[email]!['banned'] == 'true') {
+        return false;
+      }
       _email = email;
       _name = databaseUser[email]!['name'];
-      _role = UserRole.member;
+      _role = _parseRole(databaseUser[email]!['role'] ?? UserRole.member.storageKey);
       _focus = databaseUser[email]!['focus'];
       await _saveSession();
       notifyListeners();
@@ -223,5 +336,26 @@ class AuthProvider extends ChangeNotifier {
     databaseUser.remove(email);
     await _saveUsers();
     notifyListeners();
+  }
+
+  Future<void> updateUserRole(String email, UserRole role, {required bool isAdmin}) async {
+    if (!isAdmin) throw Exception('Hanya Super Admin yang dapat mengubah peran user.');
+    if (!databaseUser.containsKey(email)) return;
+    databaseUser[email]!['role'] = role.storageKey;
+    await _saveUsers();
+    notifyListeners();
+  }
+
+  Future<void> toggleBanUser(String email, {required bool isAdmin}) async {
+    if (!isAdmin) throw Exception('Hanya Admin yang dapat mengubah status blokir user.');
+    if (!databaseUser.containsKey(email)) return;
+    final current = databaseUser[email]!['banned'] == 'true';
+    databaseUser[email]!['banned'] = (!current).toString();
+    await _saveUsers();
+    notifyListeners();
+  }
+
+  bool isUserBanned(String email) {
+    return databaseUser[email]?['banned'] == 'true';
   }
 }

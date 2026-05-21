@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kuydonasi/providers/auth_provider.dart';
 import 'package:kuydonasi/providers/donation_provider.dart';
@@ -8,6 +8,7 @@ import 'package:kuydonasi/screens/login_screen.dart';
 import 'package:kuydonasi/screens/register_screen.dart';
 import 'package:kuydonasi/screens/welcome_screen.dart';
 import 'package:kuydonasi/screens/donor_dashboard_screen.dart';
+import 'package:kuydonasi/screens/donation_home_screen.dart';
 import 'package:kuydonasi/screens/feedback_screen.dart';
 import 'package:kuydonasi/screens/transaction_history_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -95,6 +96,7 @@ class _KuyDonasiAppState extends State<KuyDonasiApp> {
           '/login': (_) => const LoginScreen(),
           '/dashboard': (_) => const DashboardScreen(),
           '/donor-dashboard': (_) => const AuthGuard(child: DonorDashboardScreen()),
+          '/donation-home': (_) => const HalamanBerandaDonatur(),
           '/feedback': (_) => const AuthGuard(child: FeedbackScreen()),
           '/transaction-history': (_) => const AuthGuard(child: TransactionHistoryScreen()),
         },
